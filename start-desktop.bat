@@ -1,24 +1,12 @@
 @echo off
-title Secure Excel Media Extractor Desktop Launcher
+title Secure Excel Media Extractor (Local Desktop Edition)
 
 echo ================================================================
-echo      SECURE EXCEL MEDIA EXTRACTOR (NATIVE DESKTOP APP)
+echo           SECURE EXCEL MEDIA EXTRACTOR (LOCAL EDITION)
 echo ================================================================
 echo.
+echo [INFO] Launching local application in your web browser...
+echo [INFO] 100%% Local & Private. Zero server upload.
+echo.
 
-where node >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [ERROR] Node.js is not installed.
-    pause
-    exit /b 1
-)
-
-if not exist "node_modules\electron\" (
-    echo [INFO] Installing desktop dependencies...
-    call npm install
-)
-
-echo [INFO] Launching native desktop window...
-call npm run electron:start
-
-pause
+start "" "%~dp0dist\index.html"
