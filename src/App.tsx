@@ -1,0 +1,220 @@
+import React, { useState } from 'react';
+import { Navbar } from './components/Navbar';
+import { Step1_FileUpload } from './components/Step1_FileUpload';
+import { Step2_SheetSelect } from './components/Step2_SheetSelect';
+import { Step3_ColumnMap } from './components/Step3_ColumnMap';
+import { Step4_PatternBuilder } from './components/Step4_PatternBuilder';
+import { Step5_PreExtractionPreview } from './components/Step5_PreExtractionPreview';
+import { Step6_ExtractionProgress } from './components/Step6_ExtractionProgress';
+import { Step7_Results } from './components/Step7_Results';
+
+import {
+  ParsedWorkbook,
+  PatternToken,
+  DuplicatePolicy,
+  PreExtractionItem,
+  ExtractionResult,
+} from './types';
+import { getDefaultPatternTokens } from './lib/pattern/engine';
+import { CheckCircle2 } from 'lucide-react';
+
+export function App() {
+  const [currentStep, setCurrentStep] = useState<number>(1);
+  const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null);
+  const [selectedSheetName, setSelectedSheetName] = useState<string>('');
+  const [selectedMediaColumns, setSelectedMediaColumns] = useState<string[]>([]);
+  const [tokens, setTokens] = useState<PatternToken[]>([]);
+  const [outputStructure, setOutputStructure] = useState<'subfolders' | 'flat'>('subfolders');
+  const [duplicatePolicy, setDuplicatePolicy] = useState<DuplicatePolicy>('auto-suffix');
+  const [preparedItems, setPreparedItems] = useState<PreExtractionItem[]>([]);
+  const [result, setResult] = useState<ExtractionResult | null>(null);
+
+  // Clear data handler
+  const handleClearData = () => {
+    setWorkbook(null);
+    setSelectedSheetName('');
+    setSelectedMediaColumns([]);
+    setTokens([]);
+    setPreparedItems([]);
+    setResult(null);
+    setCurrentStep(1);
+  };
+
+  // Step 1 -> Step 2
+  const handleWorkbookParsed = (wb: ParsedWorkbook) => {
+    setWorkbook(wb);
+    if (wb.sheets.length > 0) {
+      // Pick first sheet by default
+      const defaultSheet = wb.sheets[0];
+      setSelectedSheetName(defaultSheet.name);
+
+      // Auto-detect columns with images
+      const sheetAnchors = wb.mediaAnchorsBySheet[defaultSheet.name] || [];
+      const imageCols = Array.from(new Set(sheetAnchors.map(a => a.colName)));
+      setSelectedMediaColumns(imageCols.length > 0 ? imageCols : defaultSheet.headers.slice(0, 2));
+
+      // Preset tokens matching specs
+      setTokens(getDefaultPatternTokens(defaultSheet.headers));
+    }
+    setCurrentStep(2);
+  };
+
+  // Select Sheet handler
+  const handleSelectSheet = (sheetName: string) => {
+    setSelectedSheetName(sheetName);
+    if (workbook) {
+      const sheet = workbook.sheets.find(s => s.name === sheetName);
+      if (sheet) {
+        const sheetAnchors = workbook.mediaAnchorsBySheet[sheetName] || [];
+        const imageCols = Array.from(new Set(sheetAnchors.map(a => a.colName)));
+        setSelectedMediaColumns(imageCols.length > 0 ? imageCols : sheet.headers.slice(0, 2));
+        setTokens(getDefaultPatternTokens(sheet.headers));
+      }
+    }
+  };
+
+  // Toggle column selection
+  const handleToggleColumn = (colName: string) => {
+    if (selectedMediaColumns.includes(colName)) {
+      setSelectedMediaColumns(selectedMediaColumns.filter(c => c !== colName));
+    } else {
+      setSelectedMediaColumns([...selectedMediaColumns, colName]);
+    }
+  };
+
+  const selectedSheet = workbook?.sheets.find(s => s.name === selectedSheetName);
+  const selectedAnchors = workbook && selectedSheetName ? (workbook.mediaAnchorsBySheet[selectedSheetName] || []) : [];
+
+  const stepsList = [
+    { num: 1, label: 'Workbook' },
+    { num: 2, label: 'Worksheet' },
+    { num: 3, label: 'Media Columns' },
+    { num: 4, label: 'Pattern Builder' },
+    { num: 5, label: 'Preview' },
+    { num: 6, label: 'Extract' },
+    { num: 7, label: 'Results' },
+  ];
+
+  return (
+    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
+      <Navbar onClearData={handleClearData} hasLoadedFile={!!workbook} />
+
+      {/* Main Container */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {/* Step Indicator Progress Bar */}
+        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+          <div className="flex items-center justify-between overflow-x-auto gap-2 pb-1 scrollbar-none">
+            {stepsList.map((step) => {
+              const isCurrent = step.num === currentStep;
+              const isCompleted = step.num < currentStep;
+
+              return (
+                <div key={step.num} className="flex items-center space-x-2 flex-shrink-0">
+                  <div
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                      isCurrent
+                        ? 'bg-brand-500 text-white ring-4 ring-brand-500/20 shadow-lg shadow-brand-500/30'
+                        : isCompleted
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                        : 'bg-slate-800 text-slate-500 border border-slate-700'
+                    }`}
+                  >
+                    {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : step.num}
+                  </div>
+                  <span className={`text-xs font-medium whitespace-nowrap ${
+                    isCurrent ? 'text-slate-100 font-semibold' : isCompleted ? 'text-slate-300' : 'text-slate-500'
+                  }`}>
+                    {step.label}
+                  </span>
+                  {step.num < stepsList.length && (
+                    <div className="w-6 sm:w-10 h-0.5 bg-slate-800" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Dynamic Step View Rendering */}
+        <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-6 sm:p-8 backdrop-blur-sm">
+          {currentStep === 1 && (
+            <Step1_FileUpload onWorkbookParsed={handleWorkbookParsed} />
+          )}
+
+          {currentStep === 2 && workbook && (
+            <Step2_SheetSelect
+              workbook={workbook}
+              selectedSheetName={selectedSheetName}
+              onSelectSheet={handleSelectSheet}
+              onNext={() => setCurrentStep(3)}
+              onBack={() => setCurrentStep(1)}
+            />
+          )}
+
+          {currentStep === 3 && selectedSheet && (
+            <Step3_ColumnMap
+              sheet={selectedSheet}
+              anchors={selectedAnchors}
+              selectedMediaColumns={selectedMediaColumns}
+              onToggleColumn={handleToggleColumn}
+              onNext={() => setCurrentStep(4)}
+              onBack={() => setCurrentStep(2)}
+            />
+          )}
+
+          {currentStep === 4 && selectedSheet && (
+            <Step4_PatternBuilder
+              sheet={selectedSheet}
+              anchors={selectedAnchors}
+              selectedMediaColumns={selectedMediaColumns}
+              tokens={tokens}
+              onUpdateTokens={setTokens}
+              outputStructure={outputStructure}
+              onUpdateOutputStructure={setOutputStructure}
+              onNext={() => setCurrentStep(5)}
+              onBack={() => setCurrentStep(3)}
+            />
+          )}
+
+          {currentStep === 5 && selectedSheet && (
+            <Step5_PreExtractionPreview
+              sheet={selectedSheet}
+              anchors={selectedAnchors}
+              selectedMediaColumns={selectedMediaColumns}
+              tokens={tokens}
+              duplicatePolicy={duplicatePolicy}
+              onUpdateDuplicatePolicy={setDuplicatePolicy}
+              onStartExtraction={(items) => {
+                setPreparedItems(items);
+                setCurrentStep(6);
+              }}
+              onBack={() => setCurrentStep(4)}
+            />
+          )}
+
+          {currentStep === 6 && workbook && selectedSheet && (
+            <Step6_ExtractionProgress
+              workbookName={workbook.filename}
+              sheetName={selectedSheet.name}
+              selectedMediaColumns={selectedMediaColumns}
+              tokens={tokens}
+              items={preparedItems}
+              outputStructure={outputStructure}
+              onComplete={(res) => {
+                setResult(res);
+                setCurrentStep(7);
+              }}
+              onCancel={() => setCurrentStep(5)}
+            />
+          )}
+
+          {currentStep === 7 && result && (
+            <Step7_Results result={result} onClearData={handleClearData} />
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default App;
