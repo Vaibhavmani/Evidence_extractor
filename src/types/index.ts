@@ -21,6 +21,8 @@ export interface ExtractedMediaAnchor {
   data?: Uint8Array; // Binary media data (populated on demand)
   zipEntry?: JSZip.JSZipObject; // Lazy ZIP handle for fast processing
   anchorType: 'oneCellAnchor' | 'twoCellAnchor' | 'unmapped';
+  sheetName?: string;
+  workbookName?: string;
 }
 
 export interface ParsedWorkbook {
@@ -46,6 +48,8 @@ export interface PreExtractionItem {
   cellRef: string;
   mediaColumn: string;
   originalExt: string;
+  sheetName?: string;
+  workbookName?: string;
   generatedFilename: string;
   status: 'ready' | 'duplicate' | 'unmapped' | 'error' | 'warning';
   warningMessage?: string;

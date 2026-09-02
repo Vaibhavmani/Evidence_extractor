@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { ParsedWorkbook, ExtractedMediaAnchor, PatternToken, DuplicatePolicy, ExtractionResult, PreExtractionItem, SheetSummary } from './types';
 import { Navbar } from './components/Navbar';
 import { Step1_FileUpload } from './components/Step1_FileUpload';
 import { Step2_SheetSelect } from './components/Step2_SheetSelect';
@@ -7,21 +8,13 @@ import { Step4_PatternBuilder } from './components/Step4_PatternBuilder';
 import { Step5_PreExtractionPreview } from './components/Step5_PreExtractionPreview';
 import { Step6_ExtractionProgress } from './components/Step6_ExtractionProgress';
 import { Step7_Results } from './components/Step7_Results';
-
-import {
-  ParsedWorkbook,
-  PatternToken,
-  DuplicatePolicy,
-  PreExtractionItem,
-  ExtractionResult,
-} from './types';
 import { getDefaultPatternTokens } from './lib/pattern/engine';
 import { CheckCircle2 } from 'lucide-react';
 
 export function App() {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null);
-  const [selectedSheetName, setSelectedSheetName] = useState<string>('');
+  const [selectedSheetNames, setSelectedSheetNames] = useState<string[]>([]);
   const [selectedMediaColumns, setSelectedMediaColumns] = useState<string[]>([]);
   const [tokens, setTokens] = useState<PatternToken[]>([]);
   const [outputStructure, setOutputStructure] = useState<'subfolders' | 'flat'>('subfolders');
@@ -32,7 +25,7 @@ export function App() {
   // Clear data handler
   const handleClearData = () => {
     setWorkbook(null);
-    setSelectedSheetName('');
+    setSelectedSheetNames([]);
     setSelectedMediaColumns([]);
     setTokens([]);
     setPreparedItems([]);
@@ -40,35 +33,45 @@ export function App() {
     setCurrentStep(1);
   };
 
-  // Step 1 -> Step 2
+  // Workbook parsed handler
   const handleWorkbookParsed = (wb: ParsedWorkbook) => {
     setWorkbook(wb);
-    if (wb.sheets.length > 0) {
-      // Pick first sheet by default
-      const defaultSheet = wb.sheets[0];
-      setSelectedSheetName(defaultSheet.name);
+    const sheetsWithImages = wb.sheets.filter(s => s.hasImages).map(s => s.name);
+    const defaultSheets = sheetsWithImages.length > 0 ? sheetsWithImages : wb.sheets.map(s => s.name);
+    setSelectedSheetNames(defaultSheets);
 
-      // Auto-detect columns with images
-      const sheetAnchors = wb.mediaAnchorsBySheet[defaultSheet.name] || [];
-      const imageCols = Array.from(new Set(sheetAnchors.map(a => a.colName)));
-      setSelectedMediaColumns(imageCols.length > 0 ? imageCols : defaultSheet.headers.slice(0, 2));
+    // Aggregate ALL anchors across ALL selected sheets
+    const allAnchors: ExtractedMediaAnchor[] = [];
+    defaultSheets.forEach(sName => {
+      const anchors = wb.mediaAnchorsBySheet[sName] || [];
+      anchors.forEach(a => allAnchors.push({ ...a, sheetName: sName, workbookName: a.workbookName || wb.filename }));
+    });
 
-      // Preset tokens matching specs
-      setTokens(getDefaultPatternTokens(defaultSheet.headers));
-    }
+    // Automatically select ALL unique media columns present across any sheet/workbook
+    const imageCols = Array.from(new Set(allAnchors.map(a => a.colName)));
+    const firstSheetHeaders = wb.sheets[0]?.headers || [];
+    setSelectedMediaColumns(imageCols.length > 0 ? imageCols : firstSheetHeaders.slice(0, 2));
+
+    // Preset tokens matching specs
+    setTokens(getDefaultPatternTokens(firstSheetHeaders));
     setCurrentStep(2);
   };
 
-  // Select Sheet handler
-  const handleSelectSheet = (sheetName: string) => {
-    setSelectedSheetName(sheetName);
+  // Select Sheets handler
+  const handleSelectSheets = (sheetNames: string[]) => {
+    setSelectedSheetNames(sheetNames);
     if (workbook) {
-      const sheet = workbook.sheets.find(s => s.name === sheetName);
-      if (sheet) {
-        const sheetAnchors = workbook.mediaAnchorsBySheet[sheetName] || [];
-        const imageCols = Array.from(new Set(sheetAnchors.map(a => a.colName)));
-        setSelectedMediaColumns(imageCols.length > 0 ? imageCols : sheet.headers.slice(0, 2));
-        setTokens(getDefaultPatternTokens(sheet.headers));
+      const allAnchors: ExtractedMediaAnchor[] = [];
+      sheetNames.forEach(sName => {
+        const anchors = workbook.mediaAnchorsBySheet[sName] || [];
+        anchors.forEach(a => allAnchors.push({ ...a, sheetName: sName, workbookName: a.workbookName || workbook.filename }));
+      });
+
+      const imageCols = Array.from(new Set(allAnchors.map(a => a.colName)));
+      const firstSheet = workbook.sheets.find(s => sheetNames.includes(s.name)) || workbook.sheets[0];
+      setSelectedMediaColumns(imageCols.length > 0 ? imageCols : (firstSheet?.headers.slice(0, 2) || []));
+      if (firstSheet) {
+        setTokens(getDefaultPatternTokens(firstSheet.headers));
       }
     }
   };
@@ -82,8 +85,38 @@ export function App() {
     }
   };
 
-  const selectedSheet = workbook?.sheets.find(s => s.name === selectedSheetName);
-  const selectedAnchors = workbook && selectedSheetName ? (workbook.mediaAnchorsBySheet[selectedSheetName] || []) : [];
+  // Aggregate selected sheets summary & anchors for Step 3 - Step 6
+  const aggregatedSheets: SheetSummary[] = workbook
+    ? workbook.sheets.filter(s => selectedSheetNames.includes(s.name))
+    : [];
+
+  const aggregatedHeaders = Array.from(
+    new Set(aggregatedSheets.flatMap(s => s.headers))
+  );
+
+  const aggregatedAnchors: ExtractedMediaAnchor[] = [];
+  if (workbook) {
+    selectedSheetNames.forEach(sName => {
+      const anchors = workbook.mediaAnchorsBySheet[sName] || [];
+      anchors.forEach(a => {
+        aggregatedAnchors.push({
+          ...a,
+          sheetName: a.sheetName || sName,
+          workbookName: a.workbookName || workbook.filename,
+        });
+      });
+    });
+  }
+
+  const combinedSheetSummary: SheetSummary = {
+    name: selectedSheetNames.length > 1 ? `Batch Queue (${selectedSheetNames.length} Sheets)` : (selectedSheetNames[0] || 'Sheet'),
+    rowCount: aggregatedSheets.reduce((sum, s) => sum + s.rowCount, 0),
+    columnCount: aggregatedHeaders.length,
+    headers: aggregatedHeaders,
+    sampleRows: aggregatedSheets.flatMap(s => s.sampleRows),
+    hasImages: aggregatedAnchors.length > 0,
+    imageCount: aggregatedAnchors.length,
+  };
 
   const stepsList = [
     { num: 1, label: 'Workbook' },
@@ -144,17 +177,17 @@ export function App() {
           {currentStep === 2 && workbook && (
             <Step2_SheetSelect
               workbook={workbook}
-              selectedSheetName={selectedSheetName}
-              onSelectSheet={handleSelectSheet}
+              selectedSheetNames={selectedSheetNames}
+              onSelectSheets={handleSelectSheets}
               onNext={() => setCurrentStep(3)}
               onBack={() => setCurrentStep(1)}
             />
           )}
 
-          {currentStep === 3 && selectedSheet && (
+          {currentStep === 3 && workbook && (
             <Step3_ColumnMap
-              sheet={selectedSheet}
-              anchors={selectedAnchors}
+              sheet={combinedSheetSummary}
+              anchors={aggregatedAnchors}
               selectedMediaColumns={selectedMediaColumns}
               onToggleColumn={handleToggleColumn}
               onNext={() => setCurrentStep(4)}
@@ -162,10 +195,10 @@ export function App() {
             />
           )}
 
-          {currentStep === 4 && selectedSheet && (
+          {currentStep === 4 && workbook && (
             <Step4_PatternBuilder
-              sheet={selectedSheet}
-              anchors={selectedAnchors}
+              sheet={combinedSheetSummary}
+              anchors={aggregatedAnchors}
               selectedMediaColumns={selectedMediaColumns}
               tokens={tokens}
               onUpdateTokens={setTokens}
@@ -176,10 +209,10 @@ export function App() {
             />
           )}
 
-          {currentStep === 5 && selectedSheet && (
+          {currentStep === 5 && workbook && (
             <Step5_PreExtractionPreview
-              sheet={selectedSheet}
-              anchors={selectedAnchors}
+              sheet={combinedSheetSummary}
+              anchors={aggregatedAnchors}
               selectedMediaColumns={selectedMediaColumns}
               tokens={tokens}
               duplicatePolicy={duplicatePolicy}
@@ -192,10 +225,10 @@ export function App() {
             />
           )}
 
-          {currentStep === 6 && workbook && selectedSheet && (
+          {currentStep === 6 && workbook && (
             <Step6_ExtractionProgress
               workbookName={workbook.filename}
-              sheetName={selectedSheet.name}
+              sheetName={combinedSheetSummary.name}
               selectedMediaColumns={selectedMediaColumns}
               tokens={tokens}
               items={preparedItems}

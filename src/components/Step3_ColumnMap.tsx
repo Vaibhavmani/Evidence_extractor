@@ -1,6 +1,6 @@
 import React from 'react';
 import { SheetSummary, ExtractedMediaAnchor } from '../types';
-import { Image, CheckSquare, Square, Table, AlertTriangle, HelpCircle } from 'lucide-react';
+import { Image, CheckSquare, Square, Table, AlertTriangle, HelpCircle, Layers } from 'lucide-react';
 
 interface Step3Props {
   sheet: SheetSummary;
@@ -19,12 +19,24 @@ export const Step3_ColumnMap: React.FC<Step3Props> = ({
   onNext,
   onBack,
 }) => {
-  // Count media anchors per column header
+  // Count media anchors per column header and track workbooks/sheets
   const mediaCountByHeader = new Map<string, number>();
+  const workbooksByHeader = new Map<string, Set<string>>();
+
   for (const a of anchors) {
     const current = mediaCountByHeader.get(a.colName) || 0;
     mediaCountByHeader.set(a.colName, current + 1);
+
+    if (a.workbookName || a.sheetName) {
+      const wbSet = workbooksByHeader.get(a.colName) || new Set<string>();
+      const label = a.workbookName ? `${a.workbookName}` : (a.sheetName || '');
+      wbSet.add(label);
+      workbooksByHeader.set(a.colName, wbSet);
+    }
   }
+
+  const totalPhotosDetected = anchors.length;
+  const uniqueWorkbooks = new Set(anchors.map(a => a.workbookName).filter(Boolean));
 
   return (
     <div className="space-y-6">
@@ -35,6 +47,28 @@ export const Step3_ColumnMap: React.FC<Step3Props> = ({
         </p>
       </div>
 
+      {/* Multi-Workbook Confirmation Banner */}
+      {uniqueWorkbooks.size > 1 && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 flex items-center justify-between text-xs text-emerald-200">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0">
+              <Layers className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="font-bold text-emerald-100 text-sm">
+                Multi-Workbook Batch Mode Active ({uniqueWorkbooks.size} Workbooks Loaded)
+              </p>
+              <p className="text-emerald-300/80 mt-0.5">
+                All media columns across all {uniqueWorkbooks.size} uploaded workbooks have been detected ({totalPhotosDetected} total photos collected).
+              </p>
+            </div>
+          </div>
+          <span className="px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold rounded-full text-xs">
+            {totalPhotosDetected} Photos Collected
+          </span>
+        </div>
+      )}
+
       {/* Easy Language Guide Box */}
       <div className="bg-brand-500/10 border border-brand-500/30 rounded-2xl p-4 text-xs space-y-2 text-brand-200">
         <div className="flex items-center space-x-2 font-bold text-brand-300">
@@ -42,23 +76,29 @@ export const Step3_ColumnMap: React.FC<Step3Props> = ({
           <span>💡 Quick Guide — How to complete Step 3</span>
         </div>
         <p className="text-slate-300">
-          <strong>What to do:</strong> Click the check boxes for the column names that contain your pictures. Green numbers show how many photos were found in each column.
+          <strong>What to do:</strong> Click the check boxes for the column names that contain your pictures. Green numbers show how many photos were found in each column across all selected files.
         </p>
         <p className="text-slate-300">
-          <strong>Example:</strong> If your spreadsheet has photos in <code className="bg-slate-800 text-brand-300 px-1.5 py-0.5 rounded">Detected Face</code> and <code className="bg-slate-800 text-brand-300 px-1.5 py-0.5 rounded">POI Image</code>, check both column boxes to extract images from both!
+          <strong>Example:</strong> If your spreadsheets have photos in <code className="bg-slate-800 text-brand-300 px-1.5 py-0.5 rounded">Detected Face</code>, <code className="bg-slate-800 text-brand-300 px-1.5 py-0.5 rounded">POI Image</code>, <code className="bg-slate-800 text-brand-300 px-1.5 py-0.5 rounded">Face Evidence</code>, and <code className="bg-slate-800 text-brand-300 px-1.5 py-0.5 rounded">Reference Evidence</code>, keep all checked to extract all photos from all workbooks!
         </p>
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
-          <Image className="w-4 h-4 text-brand-400" />
-          Spreadsheet Columns ({sheet.headers.length}):
+        <h3 className="text-sm font-semibold text-slate-300 mb-3 flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <Image className="w-4 h-4 text-brand-400" />
+            Spreadsheet Columns ({sheet.headers.length}):
+          </span>
+          <span className="text-xs text-slate-400">
+            {selectedMediaColumns.length} of {sheet.headers.length} columns selected
+          </span>
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           {sheet.headers.map((hName) => {
             const count = mediaCountByHeader.get(hName) || 0;
             const isSelected = selectedMediaColumns.includes(hName);
+            const wbSet = workbooksByHeader.get(hName);
 
             return (
               <div
@@ -79,11 +119,21 @@ export const Step3_ColumnMap: React.FC<Step3Props> = ({
                     <p className="text-xs text-slate-400 mt-0.5">
                       {count > 0 ? `${count} embedded photos` : 'No media detected'}
                     </p>
+
+                    {wbSet && wbSet.size > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {Array.from(wbSet).map((wName, idx) => (
+                          <span key={idx} className="px-1.5 py-0.5 rounded text-[9px] bg-slate-800 text-slate-300 border border-slate-700 font-mono truncate max-w-[130px]">
+                            {wName}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {count > 0 && (
-                  <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex-shrink-0">
                     {count} photos
                   </span>
                 )}
@@ -101,7 +151,7 @@ export const Step3_ColumnMap: React.FC<Step3Props> = ({
             Sample Row Preview (First {Math.min(sheet.sampleRows.length, 5)} rows)
           </h4>
           <span className="text-xs text-slate-400">
-            Total {sheet.rowCount} rows detected
+            Total {sheet.rowCount} rows detected across all loaded workbooks
           </span>
         </div>
 

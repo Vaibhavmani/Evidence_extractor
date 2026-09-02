@@ -30,6 +30,7 @@ export const Step5_PreExtractionPreview: React.FC<Step5Props> = ({
 
   // Build raw generated filename for each anchor
   const rawItems = activeAnchors.map((anchor, idx) => {
+    // Search sample rows matching row number
     const rowObj = sheet.sampleRows.find(r => r._rowNumber === anchor.row) || {};
     const generated = evaluateFilenamePattern(tokens, rowObj, anchor, anchor.colName);
     return {
@@ -61,25 +62,27 @@ export const Step5_PreExtractionPreview: React.FC<Step5Props> = ({
     }
 
     return {
-      rowNumber: raw.rowNumber,
+      anchor: raw.anchor,
       cellRef: raw.anchor.cellRef,
+      rowNumber: raw.anchor.row,
       mediaColumn: raw.anchor.colName,
       originalExt: raw.anchor.ext,
-      generatedFilename: res.finalName || raw.targetName,
+      sheetName: raw.anchor.sheetName || 'Sheet',
+      workbookName: raw.anchor.workbookName || 'Workbook',
+      generatedFilename: res.finalName,
       status,
       warningMessage,
-      anchor: raw.anchor,
     };
   });
 
-  const duplicateCount = preparedItems.filter(i => i.status === 'warning').length;
+  const duplicateCount = resolved.filter(r => r.isDuplicate).length;
 
   return (
     <div className="space-y-6">
       <div className="text-center max-w-2xl mx-auto space-y-2">
-        <h2 className="text-2xl font-bold text-slate-100">Step 5: Pre-Extraction Verification</h2>
+        <h2 className="text-2xl font-bold text-slate-100">Step 5: Pre-Extraction Preview & Audit</h2>
         <p className="text-slate-400 text-sm">
-          Review the list of generated filenames and choose how duplicate names should be handled.
+          Review the generated filenames and duplicate policies before running the final extraction.
         </p>
       </div>
 
@@ -87,13 +90,10 @@ export const Step5_PreExtractionPreview: React.FC<Step5Props> = ({
       <div className="bg-brand-500/10 border border-brand-500/30 rounded-2xl p-4 text-xs space-y-2 text-brand-200">
         <div className="flex items-center space-x-2 font-bold text-brand-300">
           <HelpCircle className="w-4 h-4 text-brand-400" />
-          <span>💡 Quick Guide — How to complete Step 5</span>
+          <span>💡 Quick Guide — Pre-Extraction Preview</span>
         </div>
         <p className="text-slate-300">
-          <strong>What to do:</strong> Scroll through the table to verify your filenames. If two photos end up with the exact same filename, select a <em>Duplicate Filename Policy</em> below so no photos are accidentally overwritten.
-        </p>
-        <p className="text-slate-300">
-          <strong>Example Policy:</strong> Selecting <strong>Auto Suffix</strong> renames identical files to <code className="bg-slate-800 text-emerald-400 px-1.5 py-0.5 rounded font-mono">photo.jpg</code> and <code className="bg-slate-800 text-emerald-400 px-1.5 py-0.5 rounded font-mono">photo_2.jpg</code> automatically.
+          <strong>What to do:</strong> Verify your filenames in the table. If photos have matching names across files, pick a <em>Duplicate Filename Policy</em> below to prevent overwriting.
         </p>
       </div>
 
@@ -191,6 +191,7 @@ export const Step5_PreExtractionPreview: React.FC<Step5Props> = ({
             <thead className="bg-slate-800/80 text-slate-200 uppercase text-[10px] tracking-wider font-semibold sticky top-0">
               <tr>
                 <th className="px-3 py-2.5">Row</th>
+                <th className="px-3 py-2.5">Sheet / Workbook</th>
                 <th className="px-3 py-2.5">Source Cell</th>
                 <th className="px-3 py-2.5">Media Column</th>
                 <th className="px-3 py-2.5">Generated Filename</th>
@@ -201,6 +202,7 @@ export const Step5_PreExtractionPreview: React.FC<Step5Props> = ({
               {preparedItems.map((item, idx) => (
                 <tr key={idx} className="hover:bg-slate-800/40 font-mono">
                   <td className="px-3 py-2 text-slate-400">{item.rowNumber}</td>
+                  <td className="px-3 py-2 font-sans text-slate-300 text-[11px]">{item.sheetName}</td>
                   <td className="px-3 py-2 text-brand-400 font-semibold">{item.cellRef}</td>
                   <td className="px-3 py-2 font-sans text-slate-300">{item.mediaColumn}</td>
                   <td className="px-3 py-2 text-emerald-400 font-semibold">{item.generatedFilename}</td>
